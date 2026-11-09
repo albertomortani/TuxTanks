@@ -10,6 +10,24 @@ canvas{max-width:100%;height:auto;image-rendering:pixelated;border:2px solid #ff
 p{font-size:12px;opacity:.7;margin:8px;text-align:center}
 </style></head><body>
 <canvas id="c" width="672" height="520"></canvas>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,collection,query,orderBy,limit,getDocs,serverTimestamp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+// >>> INCOLLA QUI la configurazione del tuo progetto Firebase (Impostazioni progetto > App web)
+const cfg={apiKey:"AIzaSyA7gcjeNrac2SYciFhvxfgOS6P1CffQLV0",authDomain:"tux-tanks.firebaseapp.com",projectId:"tux-tanks",appId:"1:554998060525:web:4e1deabb3666ceb45803e4"};
+if(cfg.apiKey){
+const app=initializeApp(cfg),auth=getAuth(app),db=getFirestore(app);
+window.FB={
+ login:()=>signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>console.warn(e)),
+ logout:()=>signOut(auth),
+ save:async(score,level)=>{try{const u=auth.currentUser,r=doc(db,'profiles',u.uid),s=await getDoc(r),o=s.exists()?s.data():{};
+  await setDoc(r,{name:u.displayName||'giocatore',photo:u.photoURL||'',best:Math.max(o.best||0,score),maxLevel:Math.max(o.maxLevel||0,level),games:(o.games||0)+1,updated:serverTimestamp()})}catch(e){console.warn(e)}},
+ top:async()=>(await getDocs(query(collection(db,'profiles'),orderBy('best','desc'),limit(10)))).docs.map(d=>d.data())
+};
+onAuthStateChanged(auth,async u=>{let b=0;if(u){try{const s=await getDoc(doc(db,'profiles',u.uid));b=s.exists()?s.data().best||0:0}catch(e){}}onUser(u,b)});
+}
+</script>
 <p>WASD/frecce = muovi · mouse = mira · click/SPAZIO = spara · M = audio · touch: sinistra muovi, destra mira e spara</p>
 <script>
 const cv=document.getElementById('c');let ctx=cv.getContext('2d');
@@ -34,7 +52,7 @@ cv.addEventListener('touchstart',e=>{e.preventDefault();for(const t of e.changed
 cv.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches){const p=pos(t);if(joy&&t.identifier===joy.id){joy.x=p.x;joy.y=p.y}else if(t.identifier===aimT){mouse.x=p.x;mouse.y=p.y-HUD}}},{passive:false});
 const tend=e=>{for(const t of e.changedTouches){if(joy&&t.identifier===joy.id)joy=null;if(t.identifier===aimT){aimT=null;mouse.down=false}}};
 cv.addEventListener('touchend',tend);cv.addEventListener('touchcancel',tend);
-function click(p){if(AC&&AC.state==='suspended')AC.resume();if(state==='upgrade'){const i=Math.floor((p.x-36)/216);if(i>=0&&i<3&&p.x-36-i*216<200)pick(i);return}onKey({key:'Enter'})}
+function click(p){if(AC&&AC.state==='suspended')AC.resume();if(state==='top'){state='start';return}if(state==='start'&&p.y>420&&window.FB){p.x<336?authToggle():showTop();return}if(state==='upgrade'){const i=Math.floor((p.x-36)/216);if(i>=0&&i<3&&p.x-36-i*216<200)pick(i);return}onKey({key:'Enter'})}
 
 // ---------- MAPPA ----------
 class Tile{constructor(c,r){this.c=c;this.r=r;this.solid=false;this.shootable=false}draw(){}}
@@ -79,7 +97,7 @@ class Player extends Entity{
     if(this.cd>0)this.cd--;
     if((mouse.down||keys[' '])&&this.cd<=0){const g=this.gentoo>0;bullets.push(new Bullet(this.cx,this.cy,this.ang,5,true,'mine',this.dmg*(g?2:1)));this.cd=(this.rapid>0?6:this.rate)*(g?2:1);snd(700,.07,'square',.025,.5)}
   }
-  hurt(n){if(this.shield>0)return;this.bank-=n;shake=Math.max(shake,n>2?9:2);if(n>2){hurtF=8;snd(130,.2,'sawtooth',.07,.5)}if(this.bank<=0){this.bank=0;state='over';overT=0;snd(110,.8,'sawtooth',.1,.2);if(score>hi){hi=score;try{localStorage.setItem('tt_hi',hi)}catch(e){}}}}
+  hurt(n){if(this.shield>0)return;this.bank-=n;shake=Math.max(shake,n>2?9:2);if(n>2){hurtF=8;snd(130,.2,'sawtooth',.07,.5)}if(this.bank<=0){this.bank=0;state='over';overT=0;snd(110,.8,'sawtooth',.1,.2);if(score>hi){hi=score;try{localStorage.setItem('tt_hi',hi)}catch(e){}}if(window.FB&&user)FB.save(score,level);}}
   draw(){drawTux(this)}
 }
 class Turret{
@@ -163,8 +181,12 @@ const UPG=[{n:'Cadenza',d:'Ricarica -20%',f:p=>p.rate=Math.max(5,p.rate*.8)},{n:
 // ---------- STATO ----------
 let parts=[],floats=[],turrets=[],state='bios',map,player,enemies=[],bullets=[],powers=[],level=1,score=0,msg='',msgT=0,biosT=0,frame=0,shake=0,flash=0,hurtF=0,overT=0,combo=0,comboT=0,choices=[],hi=0;
 try{hi=+localStorage.getItem('tt_hi')||0}catch(e){}
+let user=null,board=null;
+function onUser(u,best){user=u;if(u&&best>hi)hi=best}
+function authToggle(){if(window.FB)user?FB.logout():FB.login()}
+function showTop(){if(!window.FB)return;state='top';board=null;FB.top().then(t=>board=t).catch(()=>board=[])}
 const BIOS=['LinuxBIOS v6.66  (C) 2026 Open Source Corp.','CPU: Penguin(R) Core x86_64 ... OK','Memory test: 16384 MB ... OK','Detecting drives ... /dev/sda  Linux','Detecting drives ... C:\\ Windows (INFECTED)','WARNING: Windows enemies detected on bus','Booting TUX-TANKS.EXE ...'];
-function onKey(e){const k=e.key;if(k==='m'||k==='M')muted=!muted;
+function onKey(e){const k=e.key;if(k==='m'||k==='M')muted=!muted;if(state==='top'){state='start';return}if(state==='start'&&(k==='g'||k==='G'))authToggle();if(state==='start'&&(k==='l'||k==='L'))showTop();
   if(state==='bios'&&(k==='Delete'||k==='Enter'||k==='F2'))state='start';
   else if(state==='start'&&k==='Enter')newGame();
   else if(state==='over'&&k==='Enter'&&overT>60)state='start';
@@ -208,7 +230,8 @@ function draw(){
     if(biosT%40<20)txt('Premi DEL (o tocca) per entrare nel SETUP',20,cv.height-30,14,'#ff0','left');return}
   if(state==='start'){txt('TUX TANKS',336,160,56,'#2fbf5a');txt('vs WINDOWS',336,210,32,'#4aa3ff');
     txt('Difendi il kernel! Spara codice open source </>',336,270,14);txt('Le ricevute di Microsoft svuotano il tuo conto in banca.',336,292,14);
-    txt('Raccogli le distro Linux per i power up. Ogni 5 livelli: Clippy!',336,314,14);txt('Record: '+hi,336,350,14,'#8f8');if(Math.floor(Date.now()/500)%2)txt('PREMI INVIO / TOCCA',336,400,22,'#ff0');return}
+    txt('Raccogli le distro Linux per i power up. Ogni 5 livelli: Clippy!',336,314,14);txt('Record: '+hi,336,350,14,'#8f8');if(Math.floor(Date.now()/500)%2)txt('PREMI INVIO / TOCCA',336,400,22,'#ff0');if(window.FB){txt(user?(user.displayName||'giocatore')+' · esci [G]':'Accedi con Google [G]',168,470,13,'#8cf');txt('Classifica [L]',504,470,13,'#8cf')}return}
+  if(state==='top'){txt('CLASSIFICA',336,70,28,'#ff0');if(!board)txt('Caricamento...',336,200,16);else if(!board.length)txt('Nessun punteggio (o errore di rete)',336,200,14);else board.forEach((b,i)=>txt((i+1)+'. '+b.name+'  '+b.best+'  (LV '+b.maxLevel+')',120,120+i*32,16,i<3?'#ff0':'#fff','left'));txt('Tocca o premi un tasto per tornare',336,490,13,'#aaa');return}
   if(state==='over'){ctx.fillStyle='#0078d7';ctx.fillRect(0,0,cv.width,cv.height);txt(':(',120,150,90,'#fff','left');
     txt('Il tuo conto in banca è a zero.',120,220,18,'#fff','left');txt('Livello raggiunto: '+level+'   Punti: '+score+'   Record: '+hi,120,250,18,'#fff','left');
     txt('Windows ha vinto... per ora.',120,290,14,'#fff','left');if(overT>60)txt('Premi INVIO / tocca per riavviare',120,360,16,'#fff','left');return}
