@@ -19,7 +19,7 @@ const cfg={apiKey:"AIzaSyA7gcjeNrac2SYciFhvxfgOS6P1CffQLV0",authDomain:"tux-tank
 if(cfg.apiKey){
 const app=initializeApp(cfg),auth=getAuth(app),db=getFirestore(app);
 window.FB={
- login:()=>signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>console.warn(e)),
+ login:()=>{const g=new GoogleAuthProvider();g.setCustomParameters({prompt:'select_account'});return signInWithPopup(auth,g).catch(e=>console.warn(e))},
  logout:()=>signOut(auth),
  save:async(score,level)=>{try{const u=auth.currentUser,r=doc(db,'profiles',u.uid),s=await getDoc(r),o=s.exists()?s.data():{};
   await setDoc(r,{name:u.displayName||'giocatore',photo:u.photoURL||'',best:Math.max(o.best||0,score),maxLevel:Math.max(o.maxLevel||0,level),games:(o.games||0)+1,updated:serverTimestamp()})}catch(e){console.warn(e)}},
@@ -181,10 +181,10 @@ const UPG=[{n:'Cadenza',d:'Ricarica -20%',f:p=>p.rate=Math.max(5,p.rate*.8)},{n:
 // ---------- STATO ----------
 let parts=[],floats=[],turrets=[],state='bios',map,player,enemies=[],bullets=[],powers=[],level=1,score=0,msg='',msgT=0,biosT=0,frame=0,shake=0,flash=0,hurtF=0,overT=0,combo=0,comboT=0,choices=[],hi=0;
 try{hi=+localStorage.getItem('tt_hi')||0}catch(e){}
-let user=null,board=null;
+let user=null,board=null,boardErr='';
 function onUser(u,best){user=u;if(u&&best>hi)hi=best}
 function authToggle(){if(window.FB)user?FB.logout():FB.login()}
-function showTop(){if(!window.FB)return;state='top';board=null;FB.top().then(t=>board=t).catch(()=>board=[])}
+function showTop(){if(!window.FB)return;state='top';board=null;boardErr='';Promise.race([FB.top(),new Promise((_,j)=>setTimeout(()=>j({code:'timeout: Firestore non raggiungibile'}),8000))]).then(t=>board=t).catch(e=>{console.warn(e);board=[];boardErr=e.code||e.message||'errore'})}
 const BIOS=['LinuxBIOS v6.66  (C) 2026 Open Source Corp.','CPU: Penguin(R) Core x86_64 ... OK','Memory test: 16384 MB ... OK','Detecting drives ... /dev/sda  Linux','Detecting drives ... C:\\ Windows (INFECTED)','WARNING: Windows enemies detected on bus','Booting TUX-TANKS.EXE ...'];
 function onKey(e){const k=e.key;if(k==='m'||k==='M')muted=!muted;if(state==='top'){state='start';return}if(state==='start'&&(k==='g'||k==='G'))authToggle();if(state==='start'&&(k==='l'||k==='L'))showTop();
   if(state==='bios'&&(k==='Delete'||k==='Enter'||k==='F2'))state='start';
@@ -231,7 +231,7 @@ function draw(){
   if(state==='start'){txt('TUX TANKS',336,160,56,'#2fbf5a');txt('vs WINDOWS',336,210,32,'#4aa3ff');
     txt('Difendi il kernel! Spara codice open source </>',336,270,14);txt('Le ricevute di Microsoft svuotano il tuo conto in banca.',336,292,14);
     txt('Raccogli le distro Linux per i power up. Ogni 5 livelli: Clippy!',336,314,14);txt('Record: '+hi,336,350,14,'#8f8');if(Math.floor(Date.now()/500)%2)txt('PREMI INVIO / TOCCA',336,400,22,'#ff0');if(window.FB){txt(user?(user.displayName||'giocatore')+' · esci [G]':'Accedi con Google [G]',168,470,13,'#8cf');txt('Classifica [L]',504,470,13,'#8cf')}return}
-  if(state==='top'){txt('CLASSIFICA',336,70,28,'#ff0');if(!board)txt('Caricamento...',336,200,16);else if(!board.length)txt('Nessun punteggio (o errore di rete)',336,200,14);else board.forEach((b,i)=>txt((i+1)+'. '+b.name+'  '+b.best+'  (LV '+b.maxLevel+')',120,120+i*32,16,i<3?'#ff0':'#fff','left'));txt('Tocca o premi un tasto per tornare',336,490,13,'#aaa');return}
+  if(state==='top'){txt('CLASSIFICA',336,70,28,'#ff0');if(!board)txt('Caricamento...',336,200,16);else if(!board.length)txt(boardErr?'Errore: '+boardErr.slice(0,60):'Nessun punteggio ancora',336,200,14);else board.forEach((b,i)=>txt((i+1)+'. '+b.name+'  '+b.best+'  (LV '+b.maxLevel+')',120,120+i*32,16,i<3?'#ff0':'#fff','left'));txt('Tocca o premi un tasto per tornare',336,490,13,'#aaa');return}
   if(state==='over'){ctx.fillStyle='#0078d7';ctx.fillRect(0,0,cv.width,cv.height);txt(':(',120,150,90,'#fff','left');
     txt('Il tuo conto in banca è a zero.',120,220,18,'#fff','left');txt('Livello raggiunto: '+level+'   Punti: '+score+'   Record: '+hi,120,250,18,'#fff','left');
     txt('Windows ha vinto... per ora.',120,290,14,'#fff','left');if(overT>60)txt('Premi INVIO / tocca per riavviare',120,360,16,'#fff','left');return}
